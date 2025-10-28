@@ -1,0 +1,133 @@
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: fluentd
+  labels:
+    app: fluentd
+spec:
+  selector:
+    matchLabels:
+      app: fluentd
+  template:
+    metadata:
+      labels:
+        app: fluentd
+    spec:
+      restartPolicy: Always
+      serviceAccountName: fluentd
+      schedulerName: default-scheduler
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      containers:
+        - resources: {}
+          terminationMessagePath: /dev/termination-log
+          name: fluentd
+          env:
+            - name: FLUENTD_SYSTEMD_CONF
+              value: disable
+            - name: FLUENT_ELASTICSEARCH_HOST
+              value: elasticsearch-master
+            - name: FLUENT_ELASTICSEARCH_LOGSTASH_PREFIX
+              value: kubernetes
+            - name: FLUENT_ELASTICSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: elasticsearch-password
+                  key: password
+            - name: FLUENT_ELASTICSEARCH_PORT
+              value: '9200'
+            - name: FLUENT_ELASTICSEARCH_SCHEME
+              value: https
+            - name: FLUENT_ELASTICSEARCH_SSL_VERIFY
+              value: 'false'
+            - name: FLUENT_ELASTICSEARCH_SSL_VERSION
+              value: TLSv1_2
+            - name: FLUENT_ELASTICSEARCH_USER
+              value: elastic
+            - name: FLUENT_ELASTICSEARCH_TEMPLATE_NAME
+              value: logstash-template
+            - name: FLUENT_ELASTICSEARCH_TEMPLATE_FILE
+              value: /fluentd/etc/templates/logstash-template.json
+          securityContext:
+            privileged: true
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: buffer
+              mountPath: /fluentd/buffer
+            - name: varlogcontainers
+              readOnly: true
+              mountPath: /var/log/containers
+            - name: varlogpods
+              readOnly: true
+              mountPath: /var/log/pods
+            - name: varlibdockercontainers
+              readOnly: true
+              mountPath: /var/lib/docker/containers
+            - name: fluentd
+              mountPath: /fluentd/etc/fluent.conf
+              subPath: fluent.conf
+            - name: fluentd
+              mountPath: /fluentd/etc/kubernetes.conf
+              subPath: kubernetes.conf
+            - name: pos
+              mountPath: /fluentd/pos
+            - name: fluentd
+              mountPath: /fluentd/etc/templates/logstash-template.json
+              subPath: logstash-template.json
+          terminationMessagePolicy: File
+          image: fluentd
+      serviceAccount: fluentd
+      volumes:
+        - name: varlogcontainers
+          hostPath:
+            path: /var/log/containers
+            type: Directory
+        - name: varlogpods
+          hostPath:
+            path: /var/log/pods
+            type: Directory
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+            type: ''
+        - name: fluentd
+          configMap:
+            name: fluentd
+            defaultMode: 420
+        - name: pos
+          ephemeral:
+            volumeClaimTemplate:
+              metadata:
+                labels:
+                  app: fluentd
+                  purpose: pos
+              spec:
+                accessModes:
+                  - ReadWriteMany
+                resources:
+                  requests:
+                    storage: 1Gi
+                volumeMode: Filesystem
+        - name: buffer
+          ephemeral:
+            volumeClaimTemplate:
+              metadata:
+                labels:
+                  app: fluentd
+                  purpose: buffer
+              spec:
+                accessModes:
+                  - ReadWriteMany
+                resources:
+                  requests:
+                    storage: 10Gi
+                volumeMode: Filesystem
+      dnsPolicy: ClusterFirst
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 0
+  revisionHistoryLimit: 3

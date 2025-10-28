@@ -1,0 +1,141 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: fluentd
+  labels:
+    app: fluentd
+data:
+  fluent.conf: |
+    @include "#{ENV['FLUENTD_SYSTEMD_CONF'] || 'systemd'}.conf"
+    @include "#{ENV['FLUENTD_PROMETHEUS_CONF'] || 'prometheus'}.conf"
+    @include kubernetes.conf
+    @include conf.d/*.conf
+    @include conf.d/additional-config/*.conf
+
+    <match fluent.**>
+      @type null
+    </match>
+
+    <match kube.var.log.containers.*kube-rbac-proxy*>
+      @type null
+    </match>
+
+    <match **>
+       @type elasticsearch_dynamic
+       @id out_es
+       @log_level info
+       include_tag_key true
+       host "#{ENV['FLUENT_ELASTICSEARCH_HOST']}"
+       port "#{ENV['FLUENT_ELASTICSEARCH_PORT']}"
+       path "#{ENV['FLUENT_ELASTICSEARCH_PATH']}"
+       scheme "#{ENV['FLUENT_ELASTICSEARCH_SCHEME'] || 'http'}"
+       ssl_verify "#{ENV['FLUENT_ELASTICSEARCH_SSL_VERIFY'] || 'true'}"
+       ssl_version "#{ENV['FLUENT_ELASTICSEARCH_SSL_VERSION'] || 'TLSv1_2'}"
+       user "#{ENV['FLUENT_ELASTICSEARCH_USER'] || use_default}"
+       password "#{ENV['FLUENT_ELASTICSEARCH_PASSWORD'] || use_default}"
+       reload_connections "#{ENV['FLUENT_ELASTICSEARCH_RELOAD_CONNECTIONS'] || 'false'}"
+       reconnect_on_error "#{ENV['FLUENT_ELASTICSEARCH_RECONNECT_ON_ERROR'] || 'true'}"
+       reload_on_failure "#{ENV['FLUENT_ELASTICSEARCH_RELOAD_ON_FAILURE'] || 'true'}"
+       log_es_400_reason "#{ENV['FLUENT_ELASTICSEARCH_LOG_ES_400_REASON'] || 'false'}"
+       logstash_prefix "#{ENV['FLUENT_ELASTICSEARCH_LOGSTASH_PREFIX'] || 'logstash'}"
+       logstash_dateformat "#{ENV['FLUENT_ELASTICSEARCH_LOGSTASH_DATEFORMAT'] || '%Y.%m.%d'}"
+       logstash_format "#{ENV['FLUENT_ELASTICSEARCH_LOGSTASH_FORMAT'] || 'true'}"
+       index_name "#{ENV['FLUENT_ELASTICSEARCH_LOGSTASH_INDEX_NAME'] || 'logstash'}"
+       target_index_key "#{ENV['FLUENT_ELASTICSEARCH_TARGET_INDEX_KEY'] || use_nil}"
+       type_name "#{ENV['FLUENT_ELASTICSEARCH_LOGSTASH_TYPE_NAME'] || 'fluentd'}"
+       include_timestamp "#{ENV['FLUENT_ELASTICSEARCH_INCLUDE_TIMESTAMP'] || 'false'}"
+
+       template_name "#{ENV['FLUENT_ELASTICSEARCH_TEMPLATE_NAME'] || use_nil}"
+       template_file "#{ENV['FLUENT_ELASTICSEARCH_TEMPLATE_FILE'] || use_nil}"
+       template_overwrite true
+
+       sniffer_class_name "#{ENV['FLUENT_SNIFFER_CLASS_NAME'] || 'Fluent::Plugin::ElasticsearchSimpleSniffer'}"
+       request_timeout "#{ENV['FLUENT_ELASTICSEARCH_REQUEST_TIMEOUT'] || '5s'}"
+       application_name "#{ENV['FLUENT_ELASTICSEARCH_APPLICATION_NAME'] || use_default}"
+       suppress_type_name "#{ENV['FLUENT_ELASTICSEARCH_SUPPRESS_TYPE_NAME'] || 'true'}"
+       enable_ilm "#{ENV['FLUENT_ELASTICSEARCH_ENABLE_ILM'] || 'false'}"
+       ilm_policy_id "#{ENV['FLUENT_ELASTICSEARCH_ILM_POLICY_ID'] || use_default}"
+       ilm_policy "#{ENV['FLUENT_ELASTICSEARCH_ILM_POLICY'] || use_default}"
+       ilm_policy_overwrite "#{ENV['FLUENT_ELASTICSEARCH_ILM_POLICY_OVERWRITE'] || 'false'}"
+
+       remove_keys kubernetes.labels.app,kubernetes_labels_app
+       flatten_hashes true
+       flatten_hashes_separator _
+
+       <buffer tag,time>
+         @type file
+         path /fluentd/buffer/es.*.buffer
+         timekey 5s                 # chunk by time to keep chunks small and fresh
+         timekey_wait 0s
+         timekey_use_utc true
+
+         flush_mode interval
+         flush_interval 5s
+         flush_thread_count 8       # you already set 8; keep if ES can handle it
+
+         chunk_limit_size 8m        # increase from 2M to reduce overhead
+         queue_limit_length 8192    # allow more queued chunks
+         total_limit_size 8g        # cap disk usage for buffer
+         retry_max_interval 30
+         retry_forever true
+
+         overflow_action block      # backpressure instead of throwing exceptions
+      </buffer>
+    </match>
+  kubernetes.conf: |-
+    <source>
+      @type tail
+      @id containers.tail
+      path /var/log/containers/*.log
+      exclude_path ["/var/log/containers/fluentd*"]
+      pos_file /fluentd/pos/containers.pos
+      tag kube.*
+      read_from_head true
+
+      #  Robust file discovery for OpenShift/CRI-O
+      refresh_interval 3          # rescan for new/rotated files
+      rotate_wait 10              # give CRI-O time to finish rotation
+      follow_inodes true          # track across renames
+      follow_symlinks true        # /var/log/containers are symlinks
+      enable_watch_timer true     # timer-based watcher (not only inotify)
+      enable_stat_watcher true    # poll stat as a fallback
+      pos_file_compaction_interval 10m
+      path_key log_path
+
+      <parse>
+        @type cri                 # keep CRI parser
+      </parse>
+
+      emit_unmatched_lines false
+    </source>
+
+    <filter kube.**>
+      @type kubernetes_metadata
+      # reasonable defaults; tweak as desired:
+      watch true
+      cache_size 10000
+      skip_labels true
+      skip_container_metadata false
+      skip_master_url false
+      de_dot ["labels","annotations"]
+      de_dot_separator _
+    </filter>
+
+    <filter kube.**>
+      @type record_transformer
+      remove_keys kubernetes.labels.app,kubernetes_labels_app
+    </filter>
+  logstash-template.json: |
+    {
+      "index_patterns": ["kubernetes-*"],
+      "template": {
+        "settings": {
+          "index": {
+            "number_of_shards": 3,
+            "number_of_replicas": 1
+          }
+        }
+      },
+      "priority": 500,
+      "version": 1
+    }

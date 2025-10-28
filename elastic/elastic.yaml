@@ -1,0 +1,46 @@
+apiVersion: logging.logging.opstreelabs.in/v1beta1
+kind: Elasticsearch
+metadata:
+  name: elasticsearch
+spec:
+  esClient:
+    jvmMaxMemory: 2g
+    jvmMinMemory: 2g
+    replicas: 3
+    storage:
+      accessModes:
+        - ReadWriteOnce
+      storageClass: longhorn
+      storageSize: 2Gi
+  esClusterName: prod
+  esData:
+    jvmMaxMemory: 2g
+    jvmMinMemory: 2g
+    replicas: 3
+    storage:
+      accessModes:
+        - ReadWriteOnce
+      storageClass: longhorn
+      storageSize: 50Gi
+  esIngestion:
+    jvmMaxMemory: 4g
+    jvmMinMemory: 4g
+    replicas: 3
+    storage:
+      accessModes:
+        - ReadWriteOnce
+      storageClass: longhorn
+      storageSize: 10Gi
+  esMaster:
+    jvmMaxMemory: 4g
+    jvmMinMemory: 4g
+    replicas: 3
+    storage:
+      accessModes:
+        - ReadWriteOnce
+      storageClass: longhorn
+      storageSize: 10Gi
+  esSecurity:
+    autoGeneratePassword: true
+    tlsEnabled: true
+  esVersion: 7.16.0
