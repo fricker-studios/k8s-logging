@@ -6,7 +6,7 @@ spec:
   esClient:
     jvmMaxMemory: 2g
     jvmMinMemory: 2g
-    replicas: 3
+    replicas: 1
     storage:
       accessModes:
         - ReadWriteOnce
@@ -21,25 +21,25 @@ spec:
       accessModes:
         - ReadWriteOnce
       storageClass: longhorn
-      storageSize: 50Gi
+      storageSize: 250Gi
   esIngestion:
-    jvmMaxMemory: 4g
-    jvmMinMemory: 4g
+    jvmMaxMemory: 2g
+    jvmMinMemory: 2g
     replicas: 3
     storage:
       accessModes:
         - ReadWriteOnce
       storageClass: longhorn
-      storageSize: 10Gi
+      storageSize: 5Gi
   esMaster:
-    jvmMaxMemory: 4g
-    jvmMinMemory: 4g
+    jvmMaxMemory: 2g
+    jvmMinMemory: 2g
     replicas: 3
     storage:
       accessModes:
         - ReadWriteOnce
       storageClass: longhorn
-      storageSize: 10Gi
+      storageSize: 5Gi
   esSecurity:
     autoGeneratePassword: true
     tlsEnabled: true

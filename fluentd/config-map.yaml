@@ -93,9 +93,13 @@ data:
       read_from_head true
 
       #  Robust file discovery for OpenShift/CRI-O
-      refresh_interval 3          # rescan for new/rotated files
-      rotate_wait 10              # give CRI-O time to finish rotation
+      refresh_interval 1          # rescan for new/rotated files more frequently
+      rotate_wait 5               # give CRI-O time to finish rotation
       follow_inodes true          # track across renames
+      read_lines_limit 1000       # prevent large reads blocking
+      read_bytes_limit_per_second 8388608  # 8MB/s per file
+      max_line_size 524288        # 512KB max line size
+      skip_refresh_on_startup false
       follow_symlinks true        # /var/log/containers are symlinks
       enable_watch_timer true     # timer-based watcher (not only inotify)
       enable_stat_watcher true    # poll stat as a fallback

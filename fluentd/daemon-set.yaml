@@ -21,7 +21,12 @@ spec:
         runAsUser: 0
         runAsGroup: 0
       containers:
-        - resources: {}
+        - resources:
+            limits:
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 512Mi
           terminationMessagePath: /dev/termination-log
           name: fluentd
           env:
@@ -59,12 +64,15 @@ spec:
             - name: varlogcontainers
               readOnly: true
               mountPath: /var/log/containers
+              mountPropagation: HostToContainer
             - name: varlogpods
               readOnly: true
               mountPath: /var/log/pods
+              mountPropagation: HostToContainer
             - name: varlibdockercontainers
               readOnly: true
               mountPath: /var/lib/docker/containers
+              mountPropagation: HostToContainer
             - name: fluentd
               mountPath: /fluentd/etc/fluent.conf
               subPath: fluent.conf
@@ -77,7 +85,7 @@ spec:
               mountPath: /fluentd/etc/templates/logstash-template.json
               subPath: logstash-template.json
           terminationMessagePolicy: File
-          image: fluentd
+          image: fluent/fluentd-kubernetes-daemonset:v1-debian-elasticsearch
       serviceAccount: fluentd
       volumes:
         - name: varlogcontainers
@@ -97,33 +105,13 @@ spec:
             name: fluentd
             defaultMode: 420
         - name: pos
-          ephemeral:
-            volumeClaimTemplate:
-              metadata:
-                labels:
-                  app: fluentd
-                  purpose: pos
-              spec:
-                accessModes:
-                  - ReadWriteMany
-                resources:
-                  requests:
-                    storage: 1Gi
-                volumeMode: Filesystem
+          hostPath:
+            path: /var/lib/fluentd/pos
+            type: DirectoryOrCreate
         - name: buffer
-          ephemeral:
-            volumeClaimTemplate:
-              metadata:
-                labels:
-                  app: fluentd
-                  purpose: buffer
-              spec:
-                accessModes:
-                  - ReadWriteMany
-                resources:
-                  requests:
-                    storage: 10Gi
-                volumeMode: Filesystem
+          hostPath:
+            path: /var/lib/fluentd/buffer
+            type: DirectoryOrCreate
       dnsPolicy: ClusterFirst
   updateStrategy:
     type: RollingUpdate
